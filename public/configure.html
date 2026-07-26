@@ -79,6 +79,14 @@
     Without it, the addon scrapes each film's Letterboxd page instead, which is slower.
   </small>
 
+  <label for="scraperKey">ScraperAPI key (recommended — fixes Cloudflare blocking)</label>
+  <input id="scraperKey" placeholder="Free key, no credit card" autocomplete="off" />
+  <small>Letterboxd blocks requests from most cloud servers (Render, etc.) with a bot-check.
+    A free <a href="https://www.scraperapi.com/" target="_blank" style="color:#40bcf4">ScraperAPI</a> key
+    (1,000 requests/month, no card) routes around that reliably. Without it, the addon falls back to a
+    free public proxy that can be flaky.
+  </small>
+
   <button onclick="generate()">Generate install link</button>
 
   <div id="error"></div>
@@ -98,6 +106,7 @@
 async function generate() {
   const username = document.getElementById('username').value.trim();
   const tmdbKey = document.getElementById('tmdbKey').value.trim();
+  const scraperKey = document.getElementById('scraperKey').value.trim();
   const errorEl = document.getElementById('error');
   const resultEl = document.getElementById('result');
   errorEl.style.display = 'none';
@@ -111,6 +120,7 @@ async function generate() {
 
   const params = new URLSearchParams({ username });
   if (tmdbKey) params.set('tmdbApiKey', tmdbKey);
+  if (scraperKey) params.set('scraperApiKey', scraperKey);
 
   try {
     const res = await fetch(`/api/encode-config?${params.toString()}`);
