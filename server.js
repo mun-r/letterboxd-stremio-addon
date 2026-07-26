@@ -101,7 +101,28 @@ app.get('/:config/catalog/movie/letterboxd-watchlist.json', async (req, res) => 
     res.json({ metas });
   } catch (err) {
     console.error('Failed to build watchlist catalog:', err.message);
-    res.status(500).json({ err: 'Could not fetch Letterboxd watchlist. Is the username correct and the profile public?' });
+    res.status(500).json({
+      err: 'Could not fetch Letterboxd watchlist. Is the username correct and the profile public?',
+      debug: err.message
+    });
+  }
+});
+
+// TEMPORARY debug helper: hit /debug/<username> to see the raw fetch result
+// from Letterboxd's RSS feed, so we can diagnose blocking/bot-detection issues.
+app.get('/debug/:username', async (req, res) => {
+  try {
+    const testRes = await fetch(`https://letterboxd.com/${encodeURIComponent(req.params.username)}/watchlist/rss/`, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    const bodySnippet = (await testRes.text()).slice(0, 500);
+    res.json({ status: testRes.status, ok: testRes.ok, bodySnippet });
+  } catch (err) {
+    res.status(500).json({ err: err.message });
   }
 });
 
