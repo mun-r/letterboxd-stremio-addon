@@ -5,6 +5,16 @@ const { getWatchlistAsMetas } = require('./lib/letterboxd');
 const app = express();
 const PORT = process.env.PORT || 7000;
 
+// Stremio's app fetches addon manifests/catalogs cross-origin, so these
+// endpoints must send CORS headers or the request gets rejected client-side.
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---- config helpers -------------------------------------------------------
@@ -103,7 +113,14 @@ app.get('/api/encode-config', (req, res) => {
   res.json({ config: encoded });
 });
 
-app.listen(PORT, () => {
-  console.log(`Letterboxd Stremio addon listening on port ${PORT}`);
-  console.log(`Open http://localhost:${PORT}/configure to get your install link`);
-});
+// When run directly (npm start / node server.js) start a normal server.
+// When imported (e.g. by Vercel's serverless entrypoint in api/index.js)
+// just export the app instead — the host takes care of listening.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Letterboxd Stremio addon listening on port ${PORT}`);
+    console.log(`Open http://localhost:${PORT}/configure to get your install link`);
+  });
+}
+
+module.exports = app;
