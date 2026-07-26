@@ -122,9 +122,27 @@ app.get('/debug/:username', async (req, res) => {
 
   const result = {};
 
+  // A 200/OK status doesn't mean we got real data — Cloudflare's "Just a
+  // moment..." JS-challenge interstitial is itself served with a normal
+  // status by some proxies that just relay whatever they received. Flag it
+  // explicitly so debug output isn't misleading.
+  const looksLikeCloudflareChallenge = (body) =>
+    typeof body === 'string' && (body.includes('Just a moment') || body.includes('cf-chl') || body.includes('cdn-cgi/challenge-platform'));
+
+  const summarize = async (res) => {
+    const body = await res.text();
+    const blocked = looksLikeCloudflareChallenge(body);
+    return {
+      status: res.status,
+      ok: res.ok && !blocked,
+      blockedByCloudflareChallenge: blocked,
+      bodySnippet: body.slice(0, 300)
+    };
+  };
+
   try {
     const directRes = await fetch(rssUrl, { headers });
-    result.direct = { status: directRes.status, ok: directRes.ok, bodySnippet: (await directRes.text()).slice(0, 300) };
+    result.direct = await summarize(directRes);
   } catch (err) {
     result.direct = { error: err.message };
   }
@@ -132,13 +150,9 @@ app.get('/debug/:username', async (req, res) => {
   const scraperApiKey = req.query.scraperApiKey;
   if (scraperApiKey) {
     try {
-      const scraperUrl = `https://api.scraperapi.com/?api_key=${encodeURIComponent(scraperApiKey)}&url=${encodeURIComponent(rssUrl)}`;
+      const scraperUrl = `https://api.scraperapi.com/?api_key=${encodeURIComponent(scraperApiKey)}&url=${encodeURIComponent(rssUrl)}&premium=true`;
       const scraperRes = await fetch(scraperUrl);
-      result.scraperapi = {
-        status: scraperRes.status,
-        ok: scraperRes.ok,
-        bodySnippet: (await scraperRes.text()).slice(0, 300)
-      };
+      result.scraperapi = await summarize(scraperRes);
     } catch (err) {
       result.scraperapi = { error: err.message };
     }
@@ -148,7 +162,7 @@ app.get('/debug/:username', async (req, res) => {
 
   try {
     const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(rssUrl)}`);
-    result.publicProxy = { status: proxyRes.status, ok: proxyRes.ok, bodySnippet: (await proxyRes.text()).slice(0, 300) };
+    result.publicProxy = await summarize(proxyRes);
   } catch (err) {
     result.publicProxy = { error: err.message };
   }
