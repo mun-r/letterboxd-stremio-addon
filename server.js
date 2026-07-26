@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const { getWatchlistAsMetas, parsePosterGridItems } = require('./lib/letterboxd');
+const { getWatchlistAsMetas, getWatchlist, parsePosterGridItems } = require('./lib/letterboxd');
 
 const app = express();
 const PORT = process.env.PORT || 7000;
@@ -175,6 +175,22 @@ app.get('/debug/:username', async (req, res) => {
     result.publicProxy = await summarize(proxyRes);
   } catch (err) {
     result.publicProxy = { error: err.message };
+  }
+
+  // Page-1-only checks above can't tell us whether pagination across pages
+  // actually works, so also run the real production pagination logic
+  // (getWatchlist, same code the /catalog endpoint uses) and report the
+  // true total. This is the definitive check for "did I get my whole
+  // watchlist, not just the first page".
+  try {
+    const fullList = await getWatchlist(req.params.username, { scraperApiKey });
+    result.fullWatchlist = {
+      totalFilmsFound: fullList.length,
+      firstTitle: fullList[0] ? fullList[0].title : null,
+      lastTitle: fullList[fullList.length - 1] ? fullList[fullList.length - 1].title : null
+    };
+  } catch (err) {
+    result.fullWatchlist = { error: err.message };
   }
 
   res.json(result);
