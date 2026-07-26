@@ -95,7 +95,8 @@ app.get('/:config/catalog/movie/letterboxd-watchlist.json', async (req, res) => 
 
   try {
     const metas = await getWatchlistAsMetas(config.username, {
-      tmdbApiKey: config.tmdbApiKey || null
+      tmdbApiKey: config.tmdbApiKey || null,
+      scraperApiKey: config.scraperApiKey || null
     });
     res.setHeader('Cache-Control', 'max-age=900, stale-while-revalidate=1800');
     res.json({ metas });
@@ -128,11 +129,28 @@ app.get('/debug/:username', async (req, res) => {
     result.direct = { error: err.message };
   }
 
+  const scraperApiKey = req.query.scraperApiKey;
+  if (scraperApiKey) {
+    try {
+      const scraperUrl = `https://api.scraperapi.com/?api_key=${encodeURIComponent(scraperApiKey)}&url=${encodeURIComponent(rssUrl)}`;
+      const scraperRes = await fetch(scraperUrl);
+      result.scraperapi = {
+        status: scraperRes.status,
+        ok: scraperRes.ok,
+        bodySnippet: (await scraperRes.text()).slice(0, 300)
+      };
+    } catch (err) {
+      result.scraperapi = { error: err.message };
+    }
+  } else {
+    result.scraperapi = { skipped: 'no scraperApiKey query param provided' };
+  }
+
   try {
     const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(rssUrl)}`);
-    result.proxy = { status: proxyRes.status, ok: proxyRes.ok, bodySnippet: (await proxyRes.text()).slice(0, 300) };
+    result.publicProxy = { status: proxyRes.status, ok: proxyRes.ok, bodySnippet: (await proxyRes.text()).slice(0, 300) };
   } catch (err) {
-    result.proxy = { error: err.message };
+    result.publicProxy = { error: err.message };
   }
 
   res.json(result);
@@ -140,9 +158,13 @@ app.get('/debug/:username', async (req, res) => {
 
 // Helper endpoint the configure page calls to build install links
 app.get('/api/encode-config', (req, res) => {
-  const { username, tmdbApiKey } = req.query;
+  const { username, tmdbApiKey, scraperApiKey } = req.query;
   if (!username) return res.status(400).json({ err: 'username is required' });
-  const encoded = encodeConfig({ username: username.trim(), tmdbApiKey: tmdbApiKey ? tmdbApiKey.trim() : undefined });
+  const encoded = encodeConfig({
+    username: username.trim(),
+    tmdbApiKey: tmdbApiKey ? tmdbApiKey.trim() : undefined,
+    scraperApiKey: scraperApiKey ? scraperApiKey.trim() : undefined
+  });
   res.json({ config: encoded });
 });
 
