@@ -109,21 +109,33 @@ app.get('/:config/catalog/movie/letterboxd-watchlist.json', async (req, res) => 
 });
 
 // TEMPORARY debug helper: hit /debug/<username> to see the raw fetch result
-// from Letterboxd's RSS feed, so we can diagnose blocking/bot-detection issues.
+// from Letterboxd's RSS feed (direct and via proxy), so we can diagnose
+// blocking/bot-detection issues.
 app.get('/debug/:username', async (req, res) => {
+  const rssUrl = `https://letterboxd.com/${encodeURIComponent(req.params.username)}/watchlist/rss/`;
+  const headers = {
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+  };
+
+  const result = {};
+
   try {
-    const testRes = await fetch(`https://letterboxd.com/${encodeURIComponent(req.params.username)}/watchlist/rss/`, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-      }
-    });
-    const bodySnippet = (await testRes.text()).slice(0, 500);
-    res.json({ status: testRes.status, ok: testRes.ok, bodySnippet });
+    const directRes = await fetch(rssUrl, { headers });
+    result.direct = { status: directRes.status, ok: directRes.ok, bodySnippet: (await directRes.text()).slice(0, 300) };
   } catch (err) {
-    res.status(500).json({ err: err.message });
+    result.direct = { error: err.message };
   }
+
+  try {
+    const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(rssUrl)}`);
+    result.proxy = { status: proxyRes.status, ok: proxyRes.ok, bodySnippet: (await proxyRes.text()).slice(0, 300) };
+  } catch (err) {
+    result.proxy = { error: err.message };
+  }
+
+  res.json(result);
 });
 
 // Helper endpoint the configure page calls to build install links
