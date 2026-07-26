@@ -1,0 +1,19 @@
+{
+  "name": "letterboxd-stremio-addon",
+  "version": "1.0.0",
+  "description": "Stremio addon that shows your Letterboxd watchlist as a catalog",
+  "main": "server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cheerio": "^1.0.0",
+    "xml2js": "^0.6.2"
+  }
+}

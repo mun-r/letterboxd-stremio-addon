@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Letterboxd Watchlist — Stremio Addon Setup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root { color-scheme: dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #14181c;
+    color: #dde;
+    max-width: 560px;
+    margin: 60px auto;
+    padding: 0 20px;
+    line-height: 1.5;
+  }
+  h1 { color: #00e054; font-size: 1.5rem; }
+  label { display: block; margin-top: 20px; font-weight: 600; }
+  input {
+    width: 100%;
+    padding: 10px 12px;
+    margin-top: 6px;
+    border-radius: 6px;
+    border: 1px solid #456;
+    background: #1c2228;
+    color: #dde;
+    box-sizing: border-box;
+    font-size: 1rem;
+  }
+  small { color: #9ab; display: block; margin-top: 6px; }
+  button {
+    margin-top: 26px;
+    background: #00e054;
+    color: #14181c;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    width: 100%;
+  }
+  button:hover { background: #00c94b; }
+  #result { margin-top: 26px; display: none; }
+  #result a.install-btn {
+    display: block;
+    text-align: center;
+    background: #40bcf4;
+    color: #14181c;
+    padding: 12px;
+    border-radius: 6px;
+    font-weight: 700;
+    text-decoration: none;
+    margin-bottom: 10px;
+  }
+  .url-box {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .url-box input { font-size: 0.85rem; }
+  .url-box button { width: auto; margin-top: 0; padding: 10px 14px; background: #456; color: #dde; }
+  #error { color: #ff8a80; margin-top: 16px; display: none; }
+</style>
+</head>
+<body>
+  <h1>🎬 Letterboxd Watchlist for Stremio</h1>
+  <p>Enter your Letterboxd username to generate your personal install link. Your watchlist must be public (the default privacy setting).</p>
+
+  <label for="username">Letterboxd username</label>
+  <input id="username" placeholder="e.g. davidfincher" autocomplete="off" />
+  <small>Found in your profile URL: letterboxd.com/<b>username</b>/</small>
+
+  <label for="tmdbKey">TMDB API key (optional, recommended)</label>
+  <input id="tmdbKey" placeholder="Leave blank to use slower fallback lookup" autocomplete="off" />
+  <small>Speeds up and improves IMDb matching. Get a free key at
+    <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color:#40bcf4">themoviedb.org/settings/api</a>.
+    Without it, the addon scrapes each film's Letterboxd page instead, which is slower.
+  </small>
+
+  <button onclick="generate()">Generate install link</button>
+
+  <div id="error"></div>
+
+  <div id="result">
+    <p>✅ Your addon is ready:</p>
+    <a class="install-btn" id="installBtn" href="#">Install in Stremio</a>
+    <small>If the button doesn't open Stremio automatically, copy the manifest URL below and paste it into
+      Stremio → Addons → search bar (it accepts addon URLs directly).</small>
+    <div class="url-box">
+      <input id="manifestUrl" readonly />
+      <button onclick="copyUrl()">Copy</button>
+    </div>
+  </div>
+
+<script>
+async function generate() {
+  const username = document.getElementById('username').value.trim();
+  const tmdbKey = document.getElementById('tmdbKey').value.trim();
+  const errorEl = document.getElementById('error');
+  const resultEl = document.getElementById('result');
+  errorEl.style.display = 'none';
+  resultEl.style.display = 'none';
+
+  if (!username) {
+    errorEl.textContent = 'Please enter your Letterboxd username.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  const params = new URLSearchParams({ username });
+  if (tmdbKey) params.set('tmdbApiKey', tmdbKey);
+
+  try {
+    const res = await fetch(`/api/encode-config?${params.toString()}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.err || 'Failed to generate config');
+
+    const origin = window.location.origin;
+    const manifestUrl = `${origin}/${data.config}/manifest.json`;
+    const stremioUrl = manifestUrl.replace(/^https?:\/\//, 'stremio://');
+
+    document.getElementById('installBtn').href = stremioUrl;
+    document.getElementById('manifestUrl').value = manifestUrl;
+    resultEl.style.display = 'block';
+  } catch (err) {
+    errorEl.textContent = err.message;
+    errorEl.style.display = 'block';
+  }
+}
+
+function copyUrl() {
+  const input = document.getElementById('manifestUrl');
+  input.select();
+  document.execCommand('copy');
+}
+</script>
+</body>
+</html>
