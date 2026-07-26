@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const { getWatchlistAsMetas } = require('./lib/letterboxd');
+const { getWatchlistAsMetas, parsePosterGridItems } = require('./lib/letterboxd');
 
 const app = express();
 const PORT = process.env.PORT || 7000;
@@ -110,10 +110,11 @@ app.get('/:config/catalog/movie/letterboxd-watchlist.json', async (req, res) => 
 });
 
 // TEMPORARY debug helper: hit /debug/<username> to see the raw fetch result
-// from Letterboxd's RSS feed (direct and via proxy), so we can diagnose
-// blocking/bot-detection issues.
+// from Letterboxd's watchlist HTML page (direct, via ScraperAPI, and via a
+// public proxy), plus how many films the real poster-grid parser found in
+// each, so we can diagnose blocking/bot-detection or markup-drift issues.
 app.get('/debug/:username', async (req, res) => {
-  const rssUrl = `https://letterboxd.com/${encodeURIComponent(req.params.username)}/watchlist/rss/`;
+  const watchlistUrl = `https://letterboxd.com/${encodeURIComponent(req.params.username)}/watchlist/`;
   const headers = {
     'User-Agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36',
@@ -132,16 +133,24 @@ app.get('/debug/:username', async (req, res) => {
   const summarize = async (res) => {
     const body = await res.text();
     const blocked = looksLikeCloudflareChallenge(body);
+    let parsedItems = [];
+    try {
+      parsedItems = parsePosterGridItems(body);
+    } catch (err) {
+      // parsing failure shouldn't crash the debug endpoint
+    }
     return {
       status: res.status,
       ok: res.ok && !blocked,
       blockedByCloudflareChallenge: blocked,
+      filmsFoundByParser: parsedItems.length,
+      firstFewParsedItems: parsedItems.slice(0, 3),
       bodySnippet: body.slice(0, 300)
     };
   };
 
   try {
-    const directRes = await fetch(rssUrl, { headers });
+    const directRes = await fetch(watchlistUrl, { headers });
     result.direct = await summarize(directRes);
   } catch (err) {
     result.direct = { error: err.message };
@@ -150,7 +159,7 @@ app.get('/debug/:username', async (req, res) => {
   const scraperApiKey = req.query.scraperApiKey;
   if (scraperApiKey) {
     try {
-      const scraperUrl = `https://api.scraperapi.com/?api_key=${encodeURIComponent(scraperApiKey)}&url=${encodeURIComponent(rssUrl)}&premium=true`;
+      const scraperUrl = `https://api.scraperapi.com/?api_key=${encodeURIComponent(scraperApiKey)}&url=${encodeURIComponent(watchlistUrl)}&premium=true`;
       const scraperRes = await fetch(scraperUrl);
       result.scraperapi = await summarize(scraperRes);
     } catch (err) {
@@ -161,7 +170,7 @@ app.get('/debug/:username', async (req, res) => {
   }
 
   try {
-    const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(rssUrl)}`);
+    const proxyRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(watchlistUrl)}`);
     result.publicProxy = await summarize(proxyRes);
   } catch (err) {
     result.publicProxy = { error: err.message };
