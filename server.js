@@ -125,10 +125,11 @@ app.get('/debug/:username', async (req, res) => {
 
   // A 200/OK status doesn't mean we got real data — Cloudflare's "Just a
   // moment..." JS-challenge interstitial is itself served with a normal
-  // status by some proxies that just relay whatever they received. Flag it
-  // explicitly so debug output isn't misleading.
-  const looksLikeCloudflareChallenge = (body) =>
-    typeof body === 'string' && (body.includes('Just a moment') || body.includes('cf-chl') || body.includes('cdn-cgi/challenge-platform'));
+  // status by some proxies that just relay whatever they received. But we
+  // only match on the actual interstitial title, not on the presence of
+  // Cloudflare's routine bot-management beacon script, which is embedded on
+  // normal successful page loads too and would otherwise false-positive.
+  const looksLikeCloudflareChallenge = (body) => typeof body === 'string' && /<title>\s*Just a moment/i.test(body);
 
   const summarize = async (res) => {
     const body = await res.text();
