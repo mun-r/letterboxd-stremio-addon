@@ -187,7 +187,13 @@ app.get('/debug/:username', async (req, res) => {
     result.fullWatchlist = {
       totalFilmsFound: fullList.length,
       firstTitle: fullList[0] ? fullList[0].title : null,
-      lastTitle: fullList[fullList.length - 1] ? fullList[fullList.length - 1].title : null
+      lastTitle: fullList[fullList.length - 1] ? fullList[fullList.length - 1].title : null,
+      // Per-page breakdown so pagination can actually be verified for
+      // larger (60+) watchlists instead of just trusting the final total.
+      perPage: fullList._pageDebug || null,
+      containsSuspiciousTitles: fullList
+        .filter((f) => /angry birds/i.test(f.title || ''))
+        .map((f) => f.title)
     };
   } catch (err) {
     result.fullWatchlist = { error: err.message };
