@@ -45,12 +45,22 @@ function baseManifest() {
     description: 'Shows your public Letterboxd watchlist as a Stremio catalog.',
     logo: 'https://a.ltrbxd.com/logos/letterboxd-decal-dots-pos-rgb.png',
     resources: ['catalog'],
-    types: ['movie'],
+    types: ['movie', 'series'],
     catalogs: [
       {
         type: 'movie',
         id: 'letterboxd-watchlist',
         name: 'Letterboxd Watchlist'
+      },
+      {
+        // Letterboxd only has one content type ("films"), but people
+        // sometimes watchlist TV works (limited series like "Twin Peaks:
+        // The Return") the same way — TMDB tells us which entries are
+        // actually TV, and this catalog surfaces just those as a normal
+        // Stremio "series" row.
+        type: 'series',
+        id: 'letterboxd-watchlist-tv',
+        name: 'Letterboxd Watchlist (TV)'
       }
     ],
     behaviorHints: {
@@ -88,7 +98,7 @@ app.get('/:config/manifest.json', (req, res) => {
   res.json(manifest);
 });
 
-app.get('/:config/catalog/movie/letterboxd-watchlist.json', async (req, res) => {
+async function handleCatalogRequest(req, res, type) {
   const config = decodeConfig(req.params.config);
   if (!config || !config.username) {
     return res.status(400).json({ err: 'Missing Letterboxd username in addon config' });
@@ -102,10 +112,14 @@ app.get('/:config/catalog/movie/letterboxd-watchlist.json', async (req, res) => 
       cache.delete(`watchlist:${config.username.toLowerCase()}`);
     }
 
-    const metas = await getWatchlistAsMetas(config.username, {
+    const allMetas = await getWatchlistAsMetas(config.username, {
       tmdbApiKey: config.tmdbApiKey || null,
       scraperApiKey: config.scraperApiKey || null
     });
+    // Letterboxd's watchlist is really one list — movie vs series is
+    // determined per-item by TMDB (see resolveDetailsViaTmdb), so both
+    // catalogs pull from the same resolved list and just filter by type.
+    const metas = allMetas.filter((m) => m.type === type);
     // NOTE: kept deliberately short (5 min) while this addon is still being
     // actively debugged, so Stremio doesn't sit on a stale/broken response
     // for up to 35+ minutes after you ship a fix. Once you're confident the
@@ -120,7 +134,10 @@ app.get('/:config/catalog/movie/letterboxd-watchlist.json', async (req, res) => 
       debug: err.message
     });
   }
-});
+}
+
+app.get('/:config/catalog/movie/letterboxd-watchlist.json', (req, res) => handleCatalogRequest(req, res, 'movie'));
+app.get('/:config/catalog/series/letterboxd-watchlist-tv.json', (req, res) => handleCatalogRequest(req, res, 'series'));
 
 // TEMPORARY debug helper: hit /debug/<username> to see the raw fetch result
 // from Letterboxd's watchlist HTML page (direct, via ScraperAPI, and via a
@@ -213,6 +230,26 @@ app.get('/debug/:username', async (req, res) => {
     };
   } catch (err) {
     result.fullWatchlist = { error: err.message };
+  }
+
+  // Optional: if a tmdbApiKey is passed too, also show how titles resolve —
+  // in particular, which ones TMDB classified as 'series' (Letterboxd only
+  // has one content type, but people watchlist TV works like limited series
+  // the same way films are watchlisted).
+  const tmdbApiKey = req.query.tmdbApiKey;
+  if (tmdbApiKey) {
+    try {
+      const metas = await getWatchlistAsMetas(req.params.username, { tmdbApiKey, scraperApiKey });
+      result.resolvedTypes = {
+        movieCount: metas.filter((m) => m.type === 'movie').length,
+        seriesCount: metas.filter((m) => m.type === 'series').length,
+        seriesTitles: metas.filter((m) => m.type === 'series').map((m) => m.name)
+      };
+    } catch (err) {
+      result.resolvedTypes = { error: err.message };
+    }
+  } else {
+    result.resolvedTypes = { skipped: 'no tmdbApiKey query param provided' };
   }
 
   res.json(result);
