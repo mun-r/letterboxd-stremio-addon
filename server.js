@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const { getWatchlistAsMetas, getWatchlist, parsePosterGridItems } = require('./lib/letterboxd');
+const cache = require('./lib/cache');
 
 const app = express();
 const PORT = process.env.PORT || 7000;
@@ -94,11 +95,23 @@ app.get('/:config/catalog/movie/letterboxd-watchlist.json', async (req, res) => 
   }
 
   try {
+    // ?fresh=1 bypasses the addon's own in-memory cache — useful while
+    // you're actively verifying a fix, so you're not fighting a cached
+    // pre-fix result for up to an hour.
+    if (req.query.fresh) {
+      cache.delete(`watchlist:${config.username.toLowerCase()}`);
+    }
+
     const metas = await getWatchlistAsMetas(config.username, {
       tmdbApiKey: config.tmdbApiKey || null,
       scraperApiKey: config.scraperApiKey || null
     });
-    res.setHeader('Cache-Control', 'max-age=900, stale-while-revalidate=1800');
+    // NOTE: kept deliberately short (5 min) while this addon is still being
+    // actively debugged, so Stremio doesn't sit on a stale/broken response
+    // for up to 35+ minutes after you ship a fix. Once you're confident the
+    // scraper is stable, you can raise this back up (e.g. 15/30 min) to cut
+    // down on ScraperAPI credit usage.
+    res.setHeader('Cache-Control', 'max-age=300, stale-while-revalidate=300');
     res.json({ metas });
   } catch (err) {
     console.error('Failed to build watchlist catalog:', err.message);
@@ -183,6 +196,9 @@ app.get('/debug/:username', async (req, res) => {
   // true total. This is the definitive check for "did I get my whole
   // watchlist, not just the first page".
   try {
+    if (req.query.clearCache) {
+      cache.delete(`watchlist:${req.params.username.toLowerCase()}`);
+    }
     const fullList = await getWatchlist(req.params.username, { scraperApiKey });
     result.fullWatchlist = {
       totalFilmsFound: fullList.length,
